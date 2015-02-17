@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright (c) 2015 Nailson S. <nailsonnego@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+-->
+
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009"
+                       xmlns:s="library://ns.adobe.com/flex/spark"
+                       xmlns:mx="library://ns.adobe.com/flex/mx"
+                       minWidth="600"
+                       minHeight="400"
+                       showStatusBar="false"
+                       creationComplete="creationCompleteHandler(event)">
+    
+    <fx:Script>
+        <![CDATA[
+            import mx.events.CloseEvent;
+            import mx.events.FlexEvent;
+            import mx.utils.StringUtil;
+            
+            import spark.components.Alert;
+            
+            //--------------------------------------------------------------------------
+            // PROPERTIES
+            //--------------------------------------------------------------------------
+            
+            private var m_monstersXML:XML;
+            private var m_monstersDirectory:File;
+            private var m_outputFile:File;
+            private var m_monsters:Vector.<Monster>;
+            private var m_index:uint;
+            private var m_total:uint;
+            private var m_creatures:Dictionary;
+            private var m_started:Boolean;
+            
+            private const malfomatedMessage:String = "The '{0}' is malformed click 'Ok' to skip it.";
+            
+            //--------------------------------------------------------------------------
+            // METHODS
+            //--------------------------------------------------------------------------
+            
+            //--------------------------------------
+            // Private
+            //--------------------------------------
+            
+            private function update():void
+            {
+                startButton.enabled = (m_started == false && m_monstersXML != null && m_outputFile != null);
+                inputBrowseButton.enabled = (m_started == false);
+                outputBrowseButton.enabled = (m_started == false);
+            }
+            
+            private function parseMonstersXML(xml:XML):void
+            {
+                if (!xml)
+                    throw new ArgumentError("Parameter 'xml' cannot be null.");
+                
+                m_monsters = new Vector.<Monster>();
+                for each (var monsterXML:XML in xml.monster)
+                {
+                    var name:String = monsterXML.@name;
+                    var file:File = m_monstersDirectory.resolvePath(monsterXML.@file);
+                    m_monsters[m_monsters.length] = new Monster(name, file);
+                }
+                
+                m_index = 0;
+                m_total = m_monsters.length;
+                m_creatures = new Dictionary();
+                loadNext();
+            }
+            
+            private function loadNext():void
+            {
+                m_index++;
+                if (m_index >= m_total)
+                {
+                    saveCreaturesXML();
+                    reset();
+                    update();
+                    return;
+                }
+                
+                var monster:Monster = m_monsters[m_index];
+                m_monsters[m_index] = null;
+                
+                var stream:FileStream = new FileStream();
+                stream.addEventListener(Event.COMPLETE, completeHandler);
+                stream.openAsync(monster.file, FileMode.READ);
+                
+                function completeHandler(event:Event):void
+                {
+                    var xml:XML = null;
+                    
+                    try
+                    {
+                        xml = XML(stream.readUTFBytes(stream.bytesAvailable));
+                        stream.close();
+                    } 
+                    catch(error:Error)
+                    {
+                        stream.close();
+                        Alert.show(StringUtil.substitute(malfomatedMessage, monster.file.name),
+                                   "Parse Error",
+                                   Alert.OK | Alert.CANCEL,
+                                   null,
+                                   function(event:CloseEvent):void
+                                   {
+                                       if (event.detail == Alert.OK)
+                                       {
+                                           loadNext();
+                                       }
+                                       else
+                                       {
+                                           reset();
+                                           update();
+                                       }
+                                   });
+                        return;
+                    }
+                    
+                    if (xml.hasOwnProperty("look") && m_creatures[monster.name] == undefined)
+                    {
+                        var creature:XML = <creature/>;
+                        creature.@name = monster.name;
+                        creature.@type = "monster";
+                        
+                        var look:XML = xml.look[0];
+                        
+                        if (look.hasOwnProperty("@type"))
+                            creature.@looktype = look.@type;
+                        
+                        if (look.hasOwnProperty("@head"))
+                            creature.@lookhead = look.@head;
+                        
+                        if (look.hasOwnProperty("@body"))
+                            creature.@lookbody = look.@body;
+                        
+                        if (look.hasOwnProperty("@legs"))
+                            creature.@looklegs = look.@legs;
+                        
+                        if (look.hasOwnProperty("@feet"))
+                            creature.@lookfeet = look.@feet;
+                        
+                        m_creatures[monster.name] = creature;
+                    }
+                   
+                    progress.setProgress(m_index, m_total);
+                    progress.label = "Loaded " + m_index + " / " + m_total;
+                    loadNext();
+                }
+            }
+            
+            private function saveCreaturesXML():void
+            {
+                var list:Array = [];
+                for each (var creature:XML in m_creatures)
+                    list[list.length] = creature;
+                    
+                list.sortOn("@name");
+                
+                var xml:XML = <creatures/>;
+                for (var i:uint = 0; i < list.length; i++)
+                    xml.appendChild(list[i]);
+                
+                var stream:FileStream = new FileStream();
+                stream.open(m_outputFile, FileMode.WRITE);
+                stream.writeUTFBytes('<?xml version="1.0" encoding="UTF-8"?>' + File.lineEnding + xml.toXMLString());
+                stream.close();
+            }
+            
+            private function getDirectory(file:File):File
+            {
+                if (!file.isDirectory)
+                {
+                    var path:String = file.nativePath;
+                    var index:int = path.indexOf(file.name, -1);
+                    return new File( path.substring(0, index) );
+                }
+                return file;
+            }
+            
+            private function reset():void
+            {
+                m_monsters = null;
+                m_monstersDirectory = null;
+                m_creatures = null;
+                m_monstersXML = null;
+                m_outputFile = null;
+                m_started = false;
+                m_index = 0;
+                m_total = 0;
+                progress.setProgress(0, 0);
+                progress.label = "";
+                inputPath.text = "";
+                outputPath.text = "";
+            }
+            
+            //--------------------------------------
+            // Event Handlers
+            //--------------------------------------
+            
+            protected function creationCompleteHandler(event:FlexEvent):void
+            {
+                XML.ignoreComments = true;
+                XML.prettyIndent = 4;
+            }
+            
+            protected function inputBrowseButtonClickHandler(event:MouseEvent):void
+            {
+                var filter:FileFilter = new FileFilter("Monsters XML", "*.xml");
+                var file:File = File.documentsDirectory;
+                file.addEventListener(Event.SELECT, selectHandler);
+                file.browseForOpen("Select the monsters.xml", [filter]);
+                
+                function selectHandler(event:Event):void
+                {
+                    m_monstersDirectory = null;
+                    inputPath.text = null;
+                    
+                    var stream:FileStream = new FileStream();
+                    stream.open(file, FileMode.READ);
+                    var xml:XML = XML( stream.readUTFBytes(stream.bytesAvailable) );
+                    stream.close();
+                    
+                    if (xml.localName() == "monsters")
+                    {
+                        m_monstersXML = xml;
+                        m_monstersDirectory = getDirectory(file);
+                        inputPath.text = file.nativePath;
+                        update();
+                    }
+                }
+            }
+            
+            protected function outputBrowseButtonClickHandler(event:MouseEvent):void
+            {
+                var file:File = File.documentsDirectory;
+                file.addEventListener(Event.SELECT, selectHandler);
+                file.browseForDirectory("Select the output directory")
+                
+                function selectHandler(event:Event):void
+                {
+                    m_outputFile = file.resolvePath("creatures.xml");
+                    outputPath.text = m_outputFile.nativePath;
+                    update();
+                }
+            }
+            
+            protected function startButtonClickHandler(event:MouseEvent):void
+            {
+                m_started = true;
+                update();
+                parseMonstersXML(m_monstersXML);
+            }
+            
+        ]]>
+    </fx:Script>
+    
+    <s:layout>
+        <s:VerticalLayout paddingLeft="10"
+                          paddingRight="10"
+                          paddingTop="10"
+                          paddingBottom="10"
+                          gap="10"/>
+    </s:layout>
+    
+    <s:HGroup width="100%"
+              verticalAlign="middle">
+        <s:Label text="Input:" minWidth="50"/>
+        <s:TextInput id="inputPath" width="100%" editable="false"/>
+        <s:Button id="inputBrowseButton" label="Browse..." click="inputBrowseButtonClickHandler(event)"/>
+    </s:HGroup>
+    
+    <s:HGroup width="100%"
+              verticalAlign="middle">
+        <s:Label text="Output:" minWidth="50"/>
+        <s:TextInput id="outputPath" width="100%" editable="false"/>
+        <s:Button id="outputBrowseButton" label="Browse..." click="outputBrowseButtonClickHandler(event)"/>
+    </s:HGroup>
+    
+    <s:Spacer height="10"/>
+    
+    <s:HGroup width="100%"
+              verticalAlign="middle">
+        <s:Button id="startButton" label="Start" enabled="false" click="startButtonClickHandler(event)"/>
+        <mx:ProgressBar id="progress" width="200" height="22" label="" mode="manual" labelPlacement="center"/>
+    </s:HGroup>
+</s:WindowedApplication>
