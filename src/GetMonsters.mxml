@@ -45,7 +45,7 @@ THE SOFTWARE.
             private var m_monstersDirectory:File;
             private var m_outputFile:File;
             private var m_monsters:Vector.<Monster>;
-            private var m_index:uint;
+            private var m_index:int;
             private var m_total:uint;
             private var m_creatures:Dictionary;
             private var m_started:Boolean;
@@ -80,7 +80,7 @@ THE SOFTWARE.
                     m_monsters[m_monsters.length] = new Monster(name, file);
                 }
                 
-                m_index = 0;
+                m_index = -1;
                 m_total = m_monsters.length;
                 m_creatures = new Dictionary();
                 loadNext();
