@@ -50,7 +50,7 @@ THE SOFTWARE.
             private var m_creatures:Dictionary;
             private var m_started:Boolean;
             
-            private const malfomatedMessage:String = "The '{0}' is malformed click 'Ok' to skip it.";
+            private const malformedMessage:String = "The '{0}' is malformed click 'Ok' to skip it.";
             
             //--------------------------------------------------------------------------
             // METHODS
@@ -116,7 +116,7 @@ THE SOFTWARE.
                     catch(error:Error)
                     {
                         stream.close();
-                        Alert.show(StringUtil.substitute(malfomatedMessage, monster.file.name),
+                        Alert.show(StringUtil.substitute(malformedMessage, monster.file.name),
                                    "Parse Error",
                                    Alert.OK | Alert.CANCEL,
                                    null,
