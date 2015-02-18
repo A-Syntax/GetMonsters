@@ -145,6 +145,8 @@ THE SOFTWARE.
                         
                         if (look.hasOwnProperty("@type"))
                             creature.@looktype = look.@type;
+                        else if (look.hasOwnProperty("@typeex"))
+                            creature.@lookitem = look.@typeex;
                         
                         if (look.hasOwnProperty("@head"))
                             creature.@lookhead = look.@head;
